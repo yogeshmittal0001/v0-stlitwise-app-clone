@@ -10,7 +10,10 @@ import { useToast } from "@/hooks/use-toast"
 import { CreateGroupDialog } from "@/components/create-group-dialog"
 import { AddExpenseDialog } from "@/components/add-expense-dialog"
 import { SettleUpDialog } from "@/components/settle-up-dialog"
-import { Plus, Users, Receipt, DollarSign, LogOut } from "lucide-react"
+import { EditGroupDialog } from "@/components/edit-group-dialog"
+import { DeleteGroupDialog } from "@/components/delete-group-dialog"
+import { NotificationsDropdown } from "@/components/notifications-dropdown"
+import { Plus, Users, Receipt, DollarSign, LogOut, Settings, Trash2 } from "lucide-react"
 
 interface Group {
   _id: string
@@ -131,6 +134,19 @@ export function Dashboard() {
     }
   }
 
+  const handleGroupUpdated = (updatedGroup: Group) => {
+    setGroups(groups.map((group) => (group._id === updatedGroup._id ? updatedGroup : group)))
+    setSelectedGroup(updatedGroup)
+  }
+
+  const handleGroupDeleted = (groupId: string) => {
+    const updatedGroups = groups.filter((group) => group._id !== groupId)
+    setGroups(updatedGroups)
+    if (selectedGroup?._id === groupId) {
+      setSelectedGroup(updatedGroups.length > 0 ? updatedGroups[0] : null)
+    }
+  }
+
   const getBalanceColor = (balance: number) => {
     if (balance > 0) return "text-green-600"
     if (balance < 0) return "text-red-600"
@@ -171,10 +187,13 @@ export function Dashboard() {
               <span className="text-sm font-medium">{user?.name}</span>
             </div>
           </div>
-          <Button variant="outline" onClick={logout} className="flex items-center gap-2 bg-transparent">
-            <LogOut className="h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex items-center gap-2">
+            <NotificationsDropdown />
+            <Button variant="outline" onClick={logout} className="flex items-center gap-2 bg-transparent">
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -238,6 +257,21 @@ export function Dashboard() {
                         Settle Up
                       </Button>
                     </SettleUpDialog>
+                    <EditGroupDialog group={selectedGroup} onGroupUpdated={handleGroupUpdated}>
+                      <Button variant="outline">
+                        <Settings className="h-4 w-4 mr-2" />
+                        Edit Group
+                      </Button>
+                    </EditGroupDialog>
+                    <DeleteGroupDialog group={selectedGroup} onGroupDeleted={handleGroupDeleted}>
+                      <Button
+                        variant="outline"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </DeleteGroupDialog>
                   </div>
                 </div>
 

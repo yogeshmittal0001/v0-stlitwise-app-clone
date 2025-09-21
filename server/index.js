@@ -95,10 +95,22 @@ const settlementSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
 })
 
+// Notification Schema
+const notificationSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  type: { type: String, required: true }, // 'expense_added', 'member_added', 'group_deleted', etc.
+  message: { type: String, required: true },
+  group: { type: mongoose.Schema.Types.ObjectId, ref: "Group" },
+  expense: { type: mongoose.Schema.Types.ObjectId, ref: "Expense" },
+  isRead: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+})
+
 const User = mongoose.model("User", userSchema)
 const Group = mongoose.model("Group", groupSchema)
 const Expense = mongoose.model("Expense", expenseSchema)
 const Settlement = mongoose.model("Settlement", settlementSchema)
+const Notification = mongoose.model("Notification", notificationSchema)
 
 // Auth middleware
 const authenticateToken = (req, res, next) => {
@@ -206,7 +218,122 @@ app.post("/api/groups", authenticateToken, async (req, res) => {
     await group.populate("members", "name email")
     await group.populate("createdBy", "name email")
 
+    const notifications = memberIds.map((memberId) => ({
+      user: memberId,
+      type: "group_created",
+      message: `You were added to group "${name}"`,
+      group: group._id,
+    }))
+    await Notification.insertMany(notifications)
+
     res.status(201).json(group)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.post("/api/groups/:groupId/members", authenticateToken, async (req, res) => {
+  try {
+    const { memberEmails } = req.body
+    const group = await Group.findById(req.params.groupId)
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" })
+    }
+
+    // Check if user is a member of the group
+    if (!group.members.includes(req.user.userId)) {
+      return res.status(403).json({ message: "Not authorized to add members" })
+    }
+
+    const newMembers = await User.find({
+      email: { $in: memberEmails },
+      _id: { $nin: group.members },
+    })
+
+    if (newMembers.length === 0) {
+      return res.status(400).json({ message: "No new members to add" })
+    }
+
+    const newMemberIds = newMembers.map((member) => member._id)
+    group.members.push(...newMemberIds)
+    await group.save()
+
+    // Create notifications for new members
+    const notifications = newMemberIds.map((memberId) => ({
+      user: memberId,
+      type: "member_added",
+      message: `You were added to group "${group.name}"`,
+      group: group._id,
+    }))
+    await Notification.insertMany(notifications)
+
+    await group.populate("members", "name email")
+    res.json(group)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.delete("/api/groups/:groupId/members/:memberId", authenticateToken, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId)
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" })
+    }
+
+    // Check if user is the creator or removing themselves
+    if (group.createdBy.toString() !== req.user.userId && req.params.memberId !== req.user.userId) {
+      return res.status(403).json({ message: "Not authorized to remove members" })
+    }
+
+    group.members = group.members.filter((member) => member.toString() !== req.params.memberId)
+    await group.save()
+
+    // Create notification for removed member
+    await new Notification({
+      user: req.params.memberId,
+      type: "member_removed",
+      message: `You were removed from group "${group.name}"`,
+      group: group._id,
+    }).save()
+
+    await group.populate("members", "name email")
+    res.json(group)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.delete("/api/groups/:groupId", authenticateToken, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId)
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" })
+    }
+
+    // Only group creator can delete the group
+    if (group.createdBy.toString() !== req.user.userId) {
+      return res.status(403).json({ message: "Only group creator can delete the group" })
+    }
+
+    // Create notifications for all members
+    const notifications = group.members.map((memberId) => ({
+      user: memberId,
+      type: "group_deleted",
+      message: `Group "${group.name}" was deleted`,
+      group: group._id,
+    }))
+    await Notification.insertMany(notifications)
+
+    // Delete related expenses and settlements
+    await Expense.deleteMany({ group: req.params.groupId })
+    await Settlement.deleteMany({ group: req.params.groupId })
+    await Group.findByIdAndDelete(req.params.groupId)
+
+    res.json({ message: "Group deleted successfully" })
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message })
   }
@@ -242,7 +369,89 @@ app.post("/api/groups/:groupId/expenses", authenticateToken, async (req, res) =>
     await expense.populate("paidBy", "name email")
     await expense.populate("splitBetween.user", "name email")
 
+    const group = await Group.findById(req.params.groupId)
+    const notifications = group.members
+      .filter((memberId) => memberId.toString() !== req.user.userId)
+      .map((memberId) => ({
+        user: memberId,
+        type: "expense_added",
+        message: `New expense "${description}" added to "${group.name}"`,
+        group: group._id,
+        expense: expense._id,
+      }))
+    await Notification.insertMany(notifications)
+
     res.status(201).json(expense)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+// Settlement Routes
+app.post("/api/groups/:groupId/settlements", authenticateToken, async (req, res) => {
+  try {
+    const { to, amount, description } = req.body
+
+    const settlement = new Settlement({
+      from: req.user.userId,
+      to,
+      amount,
+      group: req.params.groupId,
+      description,
+    })
+
+    await settlement.save()
+    await settlement.populate("from", "name email")
+    await settlement.populate("to", "name email")
+
+    const group = await Group.findById(req.params.groupId)
+    await new Notification({
+      user: to,
+      type: "settlement_added",
+      message: `${settlement.from.name} settled $${amount} with you in "${group.name}"`,
+      group: group._id,
+    }).save()
+
+    res.status(201).json(settlement)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.get("/api/notifications", authenticateToken, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ user: req.user.userId })
+      .populate("group", "name")
+      .sort({ createdAt: -1 })
+      .limit(50)
+    res.json(notifications)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.put("/api/notifications/:notificationId/read", authenticateToken, async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notificationId, user: req.user.userId },
+      { isRead: true },
+      { new: true },
+    )
+
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" })
+    }
+
+    res.json(notification)
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+app.put("/api/notifications/mark-all-read", authenticateToken, async (req, res) => {
+  try {
+    await Notification.updateMany({ user: req.user.userId, isRead: false }, { isRead: true })
+    res.json({ message: "All notifications marked as read" })
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message })
   }
@@ -283,29 +492,6 @@ app.get("/api/groups/:groupId/balances", authenticateToken, async (req, res) => 
     })
 
     res.json(balances)
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-})
-
-// Settlement Routes
-app.post("/api/groups/:groupId/settlements", authenticateToken, async (req, res) => {
-  try {
-    const { to, amount, description } = req.body
-
-    const settlement = new Settlement({
-      from: req.user.userId,
-      to,
-      amount,
-      group: req.params.groupId,
-      description,
-    })
-
-    await settlement.save()
-    await settlement.populate("from", "name email")
-    await settlement.populate("to", "name email")
-
-    res.status(201).json(settlement)
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message })
   }
