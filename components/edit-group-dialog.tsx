@@ -45,6 +45,8 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
 
     setLoading(true)
     try {
+      console.log("[v0] Adding member:", newMemberEmail, "to group:", group._id)
+
       const response = await fetch(`http://localhost:5000/api/groups/${group._id}/members`, {
         method: "POST",
         headers: {
@@ -55,6 +57,8 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
       })
 
       const data = await response.json()
+      console.log("[v0] Add member response:", data)
+
       if (response.ok) {
         onGroupUpdated(data)
         setNewMemberEmail("")
@@ -63,6 +67,7 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
           description: "Member added successfully",
         })
       } else {
+        console.log("[v0] Add member error:", data.message)
         toast({
           title: "Error",
           description: data.message || "Failed to add member",
@@ -70,6 +75,7 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
         })
       }
     } catch (error) {
+      console.error("[v0] Add member network error:", error)
       toast({
         title: "Error",
         description: "Failed to add member",
@@ -92,6 +98,8 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
 
     setLoading(true)
     try {
+      console.log("[v0] Removing member:", memberId, "from group:", group._id)
+
       const response = await fetch(`http://localhost:5000/api/groups/${group._id}/members/${memberId}`, {
         method: "DELETE",
         headers: {
@@ -100,6 +108,8 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
       })
 
       const data = await response.json()
+      console.log("[v0] Remove member response:", data)
+
       if (response.ok) {
         onGroupUpdated(data)
         toast({
@@ -107,6 +117,7 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
           description: "Member removed successfully",
         })
       } else {
+        console.log("[v0] Remove member error:", data.message)
         toast({
           title: "Error",
           description: data.message || "Failed to remove member",
@@ -114,6 +125,7 @@ export function EditGroupDialog({ children, group, onGroupUpdated }: EditGroupDi
         })
       }
     } catch (error) {
+      console.error("[v0] Remove member network error:", error)
       toast({
         title: "Error",
         description: "Failed to remove member",

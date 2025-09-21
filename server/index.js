@@ -235,6 +235,8 @@ app.post("/api/groups", authenticateToken, async (req, res) => {
 app.post("/api/groups/:groupId/members", authenticateToken, async (req, res) => {
   try {
     const { memberEmails } = req.body
+    console.log("[v0] Adding members to group:", req.params.groupId, "emails:", memberEmails)
+
     const group = await Group.findById(req.params.groupId)
 
     if (!group) {
@@ -251,8 +253,14 @@ app.post("/api/groups/:groupId/members", authenticateToken, async (req, res) => 
       _id: { $nin: group.members },
     })
 
+    console.log("[v0] Found new members:", newMembers.length)
+
     if (newMembers.length === 0) {
-      return res.status(400).json({ message: "No new members to add" })
+      const existingUsers = await User.find({ email: { $in: memberEmails } })
+      if (existingUsers.length > 0) {
+        return res.status(400).json({ message: "User is already a member of this group" })
+      }
+      return res.status(400).json({ message: "No users found with provided email addresses" })
     }
 
     const newMemberIds = newMembers.map((member) => member._id)
@@ -269,14 +277,20 @@ app.post("/api/groups/:groupId/members", authenticateToken, async (req, res) => 
     await Notification.insertMany(notifications)
 
     await group.populate("members", "name email")
+    await group.populate("createdBy", "name email")
+
+    console.log("[v0] Updated group members count:", group.members.length)
     res.json(group)
   } catch (error) {
+    console.error("[v0] Add member server error:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 })
 
 app.delete("/api/groups/:groupId/members/:memberId", authenticateToken, async (req, res) => {
   try {
+    console.log("[v0] Removing member:", req.params.memberId, "from group:", req.params.groupId)
+
     const group = await Group.findById(req.params.groupId)
 
     if (!group) {
@@ -300,8 +314,12 @@ app.delete("/api/groups/:groupId/members/:memberId", authenticateToken, async (r
     }).save()
 
     await group.populate("members", "name email")
+    await group.populate("createdBy", "name email")
+
+    console.log("[v0] Updated group members count after removal:", group.members.length)
     res.json(group)
   } catch (error) {
+    console.error("[v0] Remove member server error:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 })

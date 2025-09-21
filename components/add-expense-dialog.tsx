@@ -65,6 +65,13 @@ export function AddExpenseDialog({ children, group, onExpenseAdded }: AddExpense
       const totalAmount = Number.parseFloat(amount)
       const splitAmount = totalAmount / selectedMembers.length
 
+      console.log("[v0] Adding expense:", {
+        description,
+        totalAmount,
+        selectedMembers,
+        splitAmount,
+      })
+
       const splitBetween = selectedMembers.map((memberId) => ({
         user: memberId,
         amount: splitAmount,
@@ -135,7 +142,7 @@ export function AddExpenseDialog({ children, group, onExpenseAdded }: AddExpense
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount ($)</Label>
+            <Label htmlFor="amount">Amount (₹)</Label>
             <Input
               id="amount"
               type="number"
