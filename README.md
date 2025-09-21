@@ -145,4 +145,4 @@ splitwise-clone/
 This project is open source and available under the MIT License.
 \`\`\`
 
-```json file="" isHidden
+\`\`\`json file="" isHidden
